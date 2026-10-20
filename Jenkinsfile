@@ -29,6 +29,8 @@ pipeline {
     }
 
     environment {
+        // exported explicitly so it is set even on the first run, before parameters are registered
+        TARGET_APP = "${params.TARGET_APP ?: 'app'}"
         PYTHONDONTWRITEBYTECODE = '1'
         TOOLS    = "${WORKSPACE}\\tools"
         TOOLS_PY = "${WORKSPACE}\\.venv-tools\\Scripts"
