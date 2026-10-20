@@ -1,0 +1,23 @@
+# Gitleaks configuration: all built-in rules plus a project-specific rule
+title = "DevSecOps demo gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "hardcoded-password"
+description = "Hardcoded password assigned in source code"
+regex = '''(?i)(?:password|passwd|pwd)\w*\s*[=:]\s*["']([^"'\s]{6,})["']'''
+secretGroup = 1
+keywords = ["password", "passwd", "pwd"]
+
+[[rules]]
+id = "flask-secret-key"
+description = "Hardcoded Flask SECRET_KEY"
+regex = '''SECRET_KEY["']?\]?\s*=\s*["']([^"']{8,})["']'''
+secretGroup = 1
+keywords = ["secret_key"]
+
+[allowlist]
+description = "Ignore generated / third-party files"
+paths = ['''__pycache__''', '''\.pyc$''', '''\.venv''']

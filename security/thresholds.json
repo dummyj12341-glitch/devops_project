@@ -1,0 +1,8 @@
+{
+  "_comment": "Maximum allowed findings per severity before the build fails. null = unlimited.",
+  "CRITICAL": 0,
+  "HIGH": 0,
+  "MEDIUM": null,
+  "LOW": null,
+  "INFO": null
+}

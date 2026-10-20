@@ -1,0 +1,9 @@
+# Intentionally outdated versions with publicly known CVEs (for SCA demo)
+Flask==2.3.1
+Werkzeug==3.0.1
+Jinja2==3.1.2
+requests==2.25.1
+urllib3==1.26.5
+certifi==2022.12.7
+idna==2.10
+PyYAML==6.0.3
