@@ -1,9 +1,0 @@
-# Plugins installed by scripts/setup_jenkins.ps1
-workflow-aggregator
-git
-junit
-htmlpublisher
-timestamper
-pipeline-stage-view
-pipeline-graph-view
-ws-cleanup

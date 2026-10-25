@@ -5,3 +5,6 @@ jenkins/
 __pycache__/
 *.pyc
 .pytest_cache/
+infra/.env
+infra/.secrets/
+build/

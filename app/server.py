@@ -66,7 +66,8 @@ def user():
 def ping():
     host = request.args.get("host", "127.0.0.1")
     # OS command injection: shell=True with user input
-    out = subprocess.run("ping -n 1 " + host, shell=True, capture_output=True, text=True)
+    count = "-n" if os.name == "nt" else "-c"
+    out = subprocess.run(f"ping {count} 1 " + host, shell=True, capture_output=True, text=True)
     return "<pre>" + out.stdout + "</pre>"
 
 

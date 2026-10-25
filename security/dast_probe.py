@@ -1,11 +1,13 @@
 """
 Lightweight DAST (Dynamic Application Security Testing) probe.
 
-Starts the target Flask app, waits for /health, sends a set of attack
-payloads against the running app, records what succeeded and stops the app.
+Either starts the target Flask app itself (--app-dir) or probes an already
+deployed instance (--target-url, e.g. the Kubernetes staging service), sends
+a set of attack payloads and records what succeeded.
 Uses only the Python standard library so it runs anywhere.
 
 usage: python security/dast_probe.py --app-dir app --python .venv-app\\Scripts\\python.exe --out reports/dast.json
+       python security/dast_probe.py --target-url http://devsecops-control-plane:30080 --out reports/dast.json
 """
 import argparse
 import json
@@ -148,13 +150,52 @@ def wait_for(url, proc, timeout=45):
     return False
 
 
+def write_report(args, base, probe):
+    report = {
+        "tool": "dast-probe",
+        "target": base,
+        "app_dir": args.app_dir,
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "checks_run": len(probe.checks),
+        "findings": probe.findings,
+        "checks": probe.checks,
+    }
+    with open(args.out, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2)
+    print(f"DAST complete: {len(probe.findings)} findings from {len(probe.checks)} checks -> {args.out}")
+
+
+def probe_deployed(args):
+    base = args.target_url.rstrip("/")
+    print(f"Probing deployed application at {base}")
+    deadline = time.time() + 60
+    while True:
+        try:
+            if fetch(base + "/health", timeout=5)[0] == 200:
+                break
+        except OSError:
+            pass
+        if time.time() > deadline:
+            print("ERROR: deployed application is not answering on /health")
+            sys.exit(2)
+        time.sleep(2)
+    probe = Probe(base)
+    probe.run_all()
+    write_report(args, base, probe)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--app-dir", required=True)
+    target = ap.add_mutually_exclusive_group(required=True)
+    target.add_argument("--app-dir", help="start this app locally and probe it")
+    target.add_argument("--target-url", help="probe an already running deployment")
     ap.add_argument("--python", default=sys.executable)
     ap.add_argument("--port", type=int, default=5050)
     ap.add_argument("--out", default="reports/dast.json")
     args = ap.parse_args()
+    if args.target_url:
+        probe_deployed(args)
+        return
 
     env = dict(os.environ, APP_HOST="127.0.0.1", APP_PORT=str(args.port), PYTHONUNBUFFERED="1")
     base = f"http://127.0.0.1:{args.port}"
@@ -176,19 +217,7 @@ def main():
             probe.run_all()
         finally:
             stop_tree(proc)
-
-    report = {
-        "tool": "dast-probe",
-        "target": base,
-        "app_dir": args.app_dir,
-        "scanned_at": datetime.now(timezone.utc).isoformat(),
-        "checks_run": len(probe.checks),
-        "findings": probe.findings,
-        "checks": probe.checks,
-    }
-    with open(args.out, "w", encoding="utf-8") as fh:
-        json.dump(report, fh, indent=2)
-    print(f"DAST complete: {len(probe.findings)} findings from {len(probe.checks)} checks -> {args.out}")
+    write_report(args, base, probe)
 
 
 if __name__ == "__main__":

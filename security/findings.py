@@ -14,10 +14,23 @@ SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
 TOOLS = {
     "gitleaks": {"file": "gitleaks.json", "category": "Secret Scanning"},
     "bandit": {"file": "bandit.json", "category": "SAST"},
+    "sonarqube": {"file": "sonarqube.json", "category": "SAST / Code Quality"},
     "pip-audit": {"file": "pip-audit.json", "category": "SCA (Dependencies)"},
     "trivy": {"file": "trivy.json", "category": "SCA / IaC / Secrets"},
-    "dast": {"file": "dast.json", "category": "DAST"},
+    "trivy-k8s": {"file": "trivy-k8s.json", "category": "Kubernetes / Dockerfile Misconfig"},
+    "trivy-image": {"file": "trivy-image.json", "category": "Container Image"},
+    "dast": {"file": "dast.json", "category": "DAST (probe)"},
+    "zap": {"file": "zap.json", "category": "DAST (OWASP ZAP)"},
 }
+
+# SonarQube legacy severities and MQR impact severities -> common scale
+SONAR_SEVERITY = {
+    "BLOCKER": "CRITICAL", "CRITICAL": "HIGH", "MAJOR": "MEDIUM", "MINOR": "LOW", "INFO": "INFO",
+    "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW",
+}
+# Security hotspots still need a human review, so they rank one level lower
+HOTSPOT_SEVERITY = {"HIGH": "MEDIUM", "MEDIUM": "LOW", "LOW": "INFO"}
+ZAP_RISK = {"3": "HIGH", "2": "MEDIUM", "1": "LOW", "0": "INFO"}
 
 
 def _load(path):
@@ -69,14 +82,14 @@ def parse_bandit(data):
     return out
 
 
-def parse_trivy(data):
+def parse_trivy(data, tool="trivy"):
     out = []
     for res in (data or {}).get("Results", []) or []:
         target = res.get("Target", "")
         for v in res.get("Vulnerabilities") or []:
             fixed = v.get("FixedVersion") or "no fix"
             out.append(_finding(
-                "trivy", v.get("Severity"), v.get("VulnerabilityID", ""),
+                tool, v.get("Severity"), v.get("VulnerabilityID", ""),
                 f"{v.get('PkgName')} {v.get('InstalledVersion')}: {v.get('Title') or ''}".strip(),
                 target, f"fixed in: {fixed}",
             ))
@@ -85,12 +98,12 @@ def parse_trivy(data):
                 continue
             line = (m.get("CauseMetadata") or {}).get("StartLine", "")
             out.append(_finding(
-                "trivy", m.get("Severity"), m.get("ID", ""), m.get("Title", ""),
+                tool, m.get("Severity"), m.get("ID", ""), m.get("Title", ""),
                 f"{target}:{line}" if line else target, m.get("Message", ""),
             ))
         for s in res.get("Secrets") or []:
             out.append(_finding(
-                "trivy", s.get("Severity"), s.get("RuleID", ""), s.get("Title", "Secret"),
+                tool, s.get("Severity"), s.get("RuleID", ""), s.get("Title", "Secret"),
                 f"{target}:{s.get('StartLine', '')}",
             ))
     return out
@@ -126,6 +139,60 @@ def parse_dast(data):
     return out
 
 
+def _sonar_issue_severity(issue):
+    """Highest SECURITY/RELIABILITY impact (MQR mode), else the legacy severity for bugs/vulnerabilities."""
+    impacts = [i for i in issue.get("impacts") or []
+               if i.get("softwareQuality") in ("SECURITY", "RELIABILITY")]
+    if impacts:
+        order = ["BLOCKER", "HIGH", "MEDIUM", "LOW", "INFO"]
+        return min((i.get("severity", "INFO") for i in impacts), key=order.index)
+    if issue.get("type") in ("VULNERABILITY", "BUG"):
+        return issue.get("severity")
+    return None  # pure maintainability issue (code smell): not a security finding
+
+
+def parse_sonarqube(data):
+    data = data or {}
+    out = []
+    gate = data.get("qualityGate") or {}
+    if gate.get("status") == "ERROR":
+        failed = [c.get("metricKey") for c in gate.get("conditions", []) if c.get("status") == "ERROR"]
+        out.append(_finding(
+            "sonarqube", "HIGH", "QUALITY-GATE", "SonarQube quality gate failed",
+            data.get("project", ""), "failed conditions: " + ", ".join(failed),
+        ))
+    for issue in data.get("issues", []):
+        sev = _sonar_issue_severity(issue)
+        if sev is None:
+            continue
+        component = issue.get("component", "").split(":", 1)[-1]
+        out.append(_finding(
+            "sonarqube", SONAR_SEVERITY.get(sev, "INFO"), issue.get("rule", ""), issue.get("message", ""),
+            f"{component}:{issue.get('line', '')}", f"type: {issue.get('type', '')}",
+        ))
+    for hs in data.get("hotspots", []):
+        component = hs.get("component", "").split(":", 1)[-1]
+        out.append(_finding(
+            "sonarqube", HOTSPOT_SEVERITY.get(hs.get("vulnerabilityProbability"), "INFO"),
+            hs.get("ruleKey", ""), "Security hotspot: " + hs.get("message", ""),
+            f"{component}:{hs.get('line', '')}", f"category: {hs.get('securityCategory', '')}",
+        ))
+    return out
+
+
+def parse_zap(data):
+    out = []
+    for site in (data or {}).get("site", []):
+        for alert in site.get("alerts", []):
+            instances = alert.get("instances") or [{}]
+            out.append(_finding(
+                "zap", ZAP_RISK.get(str(alert.get("riskcode")), "INFO"), f"ZAP-{alert.get('pluginid', '')}",
+                alert.get("name") or alert.get("alert", ""), instances[0].get("uri", site.get("@name", "")),
+                f"{alert.get('count', len(instances))} instance(s), CWE-{alert.get('cweid', '?')}",
+            ))
+    return out
+
+
 def collect(reports_dir):
     """Return (findings, tool_status) for all scanner reports in reports_dir."""
     reports_dir = Path(reports_dir)
@@ -143,7 +210,11 @@ def collect(reports_dir):
         + parse_bandit(raw["bandit"])
         + parse_pip_audit(raw["pip-audit"], trivy_sev)
         + trivy
+        + parse_sonarqube(raw["sonarqube"])
+        + parse_trivy(raw["trivy-k8s"], "trivy-k8s")
+        + parse_trivy(raw["trivy-image"], "trivy-image")
         + parse_dast(raw["dast"])
+        + parse_zap(raw["zap"])
     )
     findings.sort(key=lambda f: (SEVERITIES.index(f["severity"]), f["tool"]))
     return findings, status

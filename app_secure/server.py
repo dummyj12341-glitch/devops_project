@@ -8,7 +8,7 @@ Every vulnerability in ../app/server.py is fixed here:
   * user input is escaped by Jinja2 autoescaping (no render_template_string)
   * PBKDF2-SHA256 instead of MD5
   * yaml.safe_load / JSON instead of yaml.load / pickle
-  * debug off, bound to localhost, security headers on every response
+  * debug off, bound to localhost unless APP_HOST is set, security headers on every response
   * dependencies pinned to current patched versions
 """
 import hashlib
@@ -71,9 +71,10 @@ def ping():
         ip = str(ipaddress.ip_address(host))
     except ValueError:
         abort(400, "host must be an IP address")
+    count = "-n" if os.name == "nt" else "-c"
     # fixed argv, validated IP address, no shell
     out = subprocess.run(  # nosec B603 B607
-        ["ping", "-n", "1", ip], capture_output=True, text=True, timeout=10
+        ["ping", count, "1", ip], capture_output=True, text=True, timeout=10
     )
     return render_template("ping.html", output=out.stdout)
 
@@ -110,4 +111,5 @@ def load_session():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=int(os.environ.get("APP_PORT", "5000")), debug=False)
+    # localhost by default; the container image sets APP_HOST=0.0.0.0
+    app.run(host=os.environ.get("APP_HOST", "127.0.0.1"), port=int(os.environ.get("APP_PORT", "5000")), debug=False)

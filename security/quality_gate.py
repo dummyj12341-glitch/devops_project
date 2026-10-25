@@ -29,12 +29,12 @@ def main():
     print("=" * 60)
     print(" SECURITY QUALITY GATE")
     print("=" * 60)
-    print(f"{'Tool':<12}{'Status':<10}" + "".join(f"{s[:4]:>6}" for s in SEVERITIES))
+    print(f"{'Tool':<13}{'Status':<10}" + "".join(f"{s[:4]:>6}" for s in SEVERITIES))
     for tool in TOOLS:
         tc = count_by_severity([f for f in findings if f["tool"] == tool])
-        print(f"{tool:<12}{status[tool]:<10}" + "".join(f"{tc[s]:>6}" for s in SEVERITIES))
+        print(f"{tool:<13}{status[tool]:<10}" + "".join(f"{tc[s]:>6}" for s in SEVERITIES))
     print("-" * 60)
-    print(f"{'TOTAL':<22}" + "".join(f"{counts[s]:>6}" for s in SEVERITIES))
+    print(f"{'TOTAL':<23}" + "".join(f"{counts[s]:>6}" for s in SEVERITIES))
     print()
 
     missing = [t for t, s in status.items() if s == "missing"]
