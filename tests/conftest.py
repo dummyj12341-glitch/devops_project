@@ -19,5 +19,7 @@ def client():
     sys.modules["server"] = module
     spec.loader.exec_module(module)
     module.app.config["TESTING"] = True
+    # the secure app enforces CSRF tokens; unit tests call the endpoints directly
+    module.app.config["WTF_CSRF_ENABLED"] = False
     with module.app.test_client() as c:
         yield c

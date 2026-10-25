@@ -9,6 +9,7 @@ Every vulnerability in ../app/server.py is fixed here:
   * PBKDF2-SHA256 instead of MD5
   * yaml.safe_load / JSON instead of yaml.load / pickle
   * debug off, bound to localhost unless APP_HOST is set, security headers on every response
+  * CSRF protection on state-changing requests (Flask-WTF)
   * dependencies pinned to current patched versions
 """
 import hashlib
@@ -21,11 +22,14 @@ import subprocess  # nosec B404
 
 import yaml
 from flask import Flask, abort, jsonify, render_template, request
+from flask_wtf.csrf import CSRFProtect
 
 from db import get_conn, init_db
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+# every state-changing request (POST /config) needs a CSRF token
+csrf = CSRFProtect(app)
 PW_SALT = os.environ.get("PW_SALT", "").encode() or secrets.token_bytes(16)
 
 init_db()
@@ -33,7 +37,14 @@ init_db()
 
 @app.after_request
 def set_security_headers(resp):
-    resp.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "frame-ancestors 'none'; form-action 'self'; base-uri 'self'"
+    )
+    resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    resp.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "no-referrer"
@@ -73,9 +84,13 @@ def ping():
         abort(400, "host must be an IP address")
     count = "-n" if os.name == "nt" else "-c"
     # fixed argv, validated IP address, no shell
-    out = subprocess.run(  # nosec B603 B607
-        ["ping", count, "1", ip], capture_output=True, text=True, timeout=10
-    )
+    try:
+        out = subprocess.run(  # nosec B603 B607
+            ["ping", count, "1", ip], capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # no ping binary / no raw-socket capability in the hardened container
+        abort(503, "ping is not available")
     return render_template("ping.html", output=out.stdout)
 
 
