@@ -11,7 +11,9 @@ param(
     [string]$Branch = "",
     [string]$Repo = ""
 )
-$ErrorActionPreference = "Stop"
+# kind and docker compose print progress on stderr, which PowerShell 5.1 would turn
+# into terminating errors under "Stop"; failures are checked through $LASTEXITCODE instead
+$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
 $Root    = Split-Path -Parent $PSScriptRoot
@@ -63,6 +65,7 @@ docker compose -f $Compose up -d --build
 if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 
 & (Join-Path $PSScriptRoot "bootstrap_sonar.ps1")
+if (-not $?) { throw "SonarQube bootstrap failed" }
 
 # recreates Jenkins only if the SonarQube token in .env changed
 docker compose -f $Compose up -d jenkins
