@@ -52,17 +52,17 @@ def set_security_headers(resp):
     return resp
 
 
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
     return render_template("index.html", variant="SECURE")
 
 
-@app.route("/health")
+@app.route("/health", methods=["GET"])
 def health():
     return jsonify(status="ok")
 
 
-@app.route("/user")
+@app.route("/user", methods=["GET"])
 def user():
     name = request.args.get("name", "")
     conn = get_conn()
@@ -75,7 +75,7 @@ def user():
     return jsonify([{"name": r[0], "email": r[1], "role": r[2]} for r in rows])
 
 
-@app.route("/ping")
+@app.route("/ping", methods=["GET"])
 def ping():
     host = request.args.get("host", "127.0.0.1")
     try:
@@ -94,13 +94,13 @@ def ping():
     return render_template("ping.html", output=out.stdout)
 
 
-@app.route("/greet")
+@app.route("/greet", methods=["GET"])
 def greet():
     name = request.args.get("name", "guest")
     return render_template("greet.html", name=name)
 
 
-@app.route("/hash")
+@app.route("/hash", methods=["GET"])
 def hash_password():
     pw = request.args.get("pw", "")
     digest = hashlib.pbkdf2_hmac("sha256", pw.encode(), PW_SALT, 200_000)
@@ -113,7 +113,7 @@ def load_config():
     return jsonify(loaded=str(data))
 
 
-@app.route("/session")
+@app.route("/session", methods=["GET"])
 def load_session():
     blob = request.cookies.get("session_data")
     if not blob:

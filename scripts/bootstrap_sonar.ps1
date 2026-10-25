@@ -65,5 +65,12 @@ if (-not ($gates | Where-Object { $_.name -eq "DevSecOps" })) {
     Invoke-Sonar Post "qualitygates/create_condition" $admin @{ gateName = "DevSecOps"; metric = "reliability_rating"; op = "GT"; error = "3" } | Out-Null
     Write-Host "[ok] Quality gate 'DevSecOps' created (security rating A, reliability rating C or better)"
 }
+# new gates start with SonarQube's default "new code" conditions; keep only the overall-code policy
+foreach ($c in (Invoke-Sonar Get "qualitygates/show" $admin @{ name = "DevSecOps" }).conditions) {
+    if ($c.metric -notin @("security_rating", "reliability_rating")) {
+        Invoke-Sonar Post "qualitygates/delete_condition" $admin @{ id = $c.id } | Out-Null
+        Write-Host "[ok] Removed default condition '$($c.metric)' from quality gate 'DevSecOps'"
+    }
+}
 Invoke-Sonar Post "qualitygates/set_as_default" $admin @{ name = "DevSecOps" } | Out-Null
 Write-Host "[ok] SonarQube configured"
