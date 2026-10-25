@@ -169,7 +169,8 @@ pipeline {
                             // ZAP runs as a container on the kind network; reports are copied out afterwards
                             int rc = sh(returnStatus: true, script: '''
                                 docker rm -f "zap-$BUILD_TAG" >/dev/null 2>&1 || true
-                                docker run --name "zap-$BUILD_TAG" --network kind -v "zap-$BUILD_TAG:/zap/wrk" \
+                                # root: the fresh named volume is root-owned, so the zap user could not write the report
+                                docker run --name "zap-$BUILD_TAG" --user root --network kind -v "zap-$BUILD_TAG:/zap/wrk" \
                                     zaproxy/zap-stable:2.17.0 zap-baseline.py -t "$STAGING_URL" -J zap.json -I
                             ''')
                             sh '''
