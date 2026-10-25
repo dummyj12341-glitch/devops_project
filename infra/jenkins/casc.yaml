@@ -1,0 +1,64 @@
+# Jenkins Configuration as Code: admin user, SonarQube server and the pipeline
+# job are all created at startup, so no manual setup wizard is needed.
+# ${VAR} values come from the environment set in infra/docker-compose.yml.
+jenkins:
+  systemMessage: "Jenkins DevSecOps pipeline (Docker + SonarQube + Kubernetes) - local demo"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: "${JENKINS_ADMIN_PASSWORD:-admin}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: sonar-token
+              description: SonarQube analysis token (created by scripts/bootstrap_sonar.ps1)
+              secret: "${SONAR_TOKEN:-not-configured}"
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: sonarqube
+        serverUrl: "http://sonarqube:9000"
+        credentialsId: sonar-token
+
+jobs:
+  - script: >
+      pipelineJob('devsecops-pipeline') {
+        description('Build, test, scan (Gitleaks, Bandit, pip-audit, Trivy, SonarQube), containerize, deploy to Kubernetes staging, DAST (probe + OWASP ZAP), security gate, promote to production')
+        parameters {
+          choiceParam('TARGET_APP', ['app', 'app_secure'], 'app = intentionally vulnerable version, app_secure = remediated version')
+          booleanParam('FAIL_ON_HIGH', true, 'Fail the build when the security gate fails (otherwise mark it UNSTABLE)')
+        }
+        properties {
+          pipelineTriggers {
+            triggers {
+              pollSCM { scmpoll_spec('H/2 * * * *') }
+            }
+          }
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${DEVSECOPS_REPO}') }
+                branch('*/${DEVSECOPS_BRANCH:-main}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

@@ -1,10 +1,10 @@
 .venv*/
-tools/
-reports/
-jenkins/
+/tools/
+/reports/
+/jenkins/
 __pycache__/
 *.pyc
 .pytest_cache/
 infra/.env
 infra/.secrets/
-build/
+/build/

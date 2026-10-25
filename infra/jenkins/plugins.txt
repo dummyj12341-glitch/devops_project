@@ -1,0 +1,18 @@
+# Installed into the Jenkins image by jenkins-plugin-cli
+configuration-as-code
+job-dsl
+workflow-aggregator
+git
+junit
+htmlpublisher
+timestamper
+pipeline-stage-view
+pipeline-graph-view
+ws-cleanup
+sonar
+docker-workflow
+kubernetes-cli
+credentials-binding
+plain-credentials
+coverage
+pipeline-utility-steps
